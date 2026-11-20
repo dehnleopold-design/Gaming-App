@@ -129,3 +129,32 @@ input[type='range']::-moz-range-thumb {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Runder Sound-Button: immer in der Akzentfarbe des Designs.
+   Ein dunklerer Rand unten erzeugt die "Drück"-Tiefe; beim Drücken sinkt der Knopf ab. */
+.sound-btn {
+  --btn-light: color-mix(in srgb, rgb(var(--accent)) 78%, white);
+  --btn-dark: color-mix(in srgb, rgb(var(--accent)) 70%, black);
+  --btn-edge: color-mix(in srgb, rgb(var(--accent)) 48%, black);
+  background: radial-gradient(circle at 50% 32%, var(--btn-light) 0%, rgb(var(--accent)) 42%, var(--btn-dark) 100%);
+  box-shadow:
+    0 5px 0 var(--btn-edge),
+    0 8px 12px rgb(0 0 0 / 0.3);
+  transform: translateY(-3px);
+  transition:
+    transform 70ms ease-out,
+    box-shadow 70ms ease-out,
+    filter 150ms;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.sound-btn:hover {
+  filter: brightness(1.06);
+}
+.sound-btn:active,
+.sound-btn[data-pressed] {
+  transform: translateY(1px);
+  box-shadow:
+    0 1px 0 var(--btn-edge),
+    0 2px 4px rgb(0 0 0 / 0.3);
+}
