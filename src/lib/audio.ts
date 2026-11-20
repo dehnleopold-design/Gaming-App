@@ -148,7 +148,8 @@ class AudioEngine {
     const ctx = this._ctx
     if (!ctx) return 0
     const out = (ctx as AudioContext & { outputLatency?: number }).outputLatency ?? 0
-    return (ctx.baseLatency + out) * 1000
+    const total = ((ctx.baseLatency ?? 0) + (Number.isFinite(out) ? out : 0)) * 1000
+    return Number.isFinite(total) ? total : 0
   }
 
   /** Kurzer Testton über den Ausgang. */

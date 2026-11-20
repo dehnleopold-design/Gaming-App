@@ -98,10 +98,14 @@ export function Stats() {
     .filter((s) => s.played > 0)
     .map((s) => ({ name: s.player.name, value: Number.isFinite(s.avg[activeBarField]!) ? Number(s.avg[activeBarField]!.toFixed(2)) : 0 }))
 
-  const addPlayer = () => {
-    const name = newPlayer.trim()
+  const createPlayer = (raw: string) => {
+    const name = raw.trim().slice(0, 24)
     if (!name) return
-    setPlayers([...players, { id: uid(), name: name.slice(0, 24), color: PLAYER_COLORS[players.length % PLAYER_COLORS.length]! }])
+    setPlayers((list) => [...list, { id: uid(), name, color: PLAYER_COLORS[list.length % PLAYER_COLORS.length]! }])
+  }
+
+  const addPlayer = () => {
+    createPlayer(newPlayer)
     setNewPlayer('')
   }
 
@@ -154,7 +158,7 @@ export function Stats() {
             <Button icon={Download} onClick={exportCsv} disabled={matches.length === 0}>
               CSV
             </Button>
-            <Button variant="primary" icon={Plus} onClick={() => setAdding(true)} disabled={players.length === 0}>
+            <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
               Match eintragen
             </Button>
           </>
@@ -164,8 +168,33 @@ export function Stats() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           {players.length === 0 ? (
-            <EmptyState icon={UserPlus} title="Leg zuerst Spieler an">
-              Rechts unter „Spieler“ deine Freunde eintragen, dann Matches erfassen.
+            <EmptyState
+              icon={UserPlus}
+              title="Wer spielt mit?"
+              action={
+                <form
+                  className="flex w-full max-w-sm gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    addPlayer()
+                  }}
+                >
+                  <input
+                    className="field"
+                    placeholder="Dein Name oder Gamertag"
+                    maxLength={24}
+                    value={newPlayer}
+                    onChange={(e) => setNewPlayer(e.target.value)}
+                    aria-label="Spielername"
+                  />
+                  <Button type="submit" variant="primary" icon={Plus} disabled={!newPlayer.trim()}>
+                    Anlegen
+                  </Button>
+                </form>
+              }
+            >
+              Leg dich selbst (und deine Freunde) als Spieler an. Danach kannst du über „Match eintragen“ Ergebnisse und Werte
+              erfassen.
             </EmptyState>
           ) : matches.length === 0 ? (
             <EmptyState icon={BarChart3} title="Noch keine Matches" action={<Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>Erstes Match eintragen</Button>}>
@@ -442,6 +471,7 @@ export function Stats() {
         players={players}
         fields={fields}
         games={games}
+        onAddPlayer={createPlayer}
         onSave={(m) => {
           setMatches([...matches, m])
           setAdding(false)
@@ -457,6 +487,7 @@ function AddMatchModal({
   players,
   fields,
   games,
+  onAddPlayer,
   onSave,
 }: {
   open: boolean
@@ -464,20 +495,33 @@ function AddMatchModal({
   players: Player[]
   fields: StatField[]
   games: string[]
+  onAddPlayer: (name: string) => void
   onSave: (m: Match) => void
 }) {
+  const [newName, setNewName] = useState('')
   const [game, setGame] = useState('')
   const [date, setDate] = useState(today())
   const [rows, setRows] = useState<Record<string, { on: boolean; win: boolean | null; stats: Record<string, string> }>>({})
   const [error, setError] = useState('')
 
+  // Beim Öffnen zurücksetzen …
   useEffect(() => {
     if (!open) return
     setGame((g) => g || games[games.length - 1] || '')
     setDate(today())
     setError('')
-    setRows(Object.fromEntries(players.map((p) => [p.id, { on: true, win: null, stats: {} }])))
-  }, [open, players, games])
+    setNewName('')
+    setRows({})
+  }, [open])
+  // … und neu angelegte Spieler ergänzen, ohne bereits Eingetipptes zu verlieren.
+  useEffect(() => {
+    if (!open) return
+    setRows((r) => {
+      const next = { ...r }
+      for (const p of players) if (!next[p.id]) next[p.id] = { on: true, win: null, stats: {} }
+      return next
+    })
+  }, [open, players])
 
   const setRow = (id: string, patch: Partial<{ on: boolean; win: boolean | null; stats: Record<string, string> }>) =>
     setRows((r) => ({ ...r, [id]: { ...r[id]!, ...patch } }))
@@ -498,7 +542,7 @@ function AddMatchModal({
         }
         return { playerId: p.id, win: row.win, stats }
       })
-    if (results.length === 0) return setError('Mindestens ein Spieler muss dabei sein.')
+    if (results.length === 0) return setError(players.length === 0 ? 'Leg unten zuerst einen Spieler an.' : 'Mindestens ein Spieler muss dabei sein.')
     onSave({ id: uid(), game: game.trim().slice(0, 40), date, results, source: 'manual' })
   }
 
@@ -577,6 +621,34 @@ function AddMatchModal({
             )
           })}
         </div>
+
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            onAddPlayer(newName)
+            setNewName('')
+          }}
+        >
+          <input
+            className="field h-9 py-0"
+            placeholder={players.length === 0 ? 'Dein Name oder Gamertag' : 'Weiteren Spieler hinzufügen'}
+            maxLength={24}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            aria-label="Spieler hinzufügen"
+          />
+          <Button type="submit" icon={UserPlus} disabled={!newName.trim()}>
+            Spieler
+          </Button>
+        </form>
+
+        {fields.some((f) => /sieg|niederlage|win|loss/i.test(f.label)) && (
+          <p className="text-[12px] text-muted">
+            Tipp: Sieg/Niederlage wählst du oben pro Spieler. Eigene Werte „Siege“/„Niederlagen“ brauchst du dafür nicht – die Siegquote
+            berechnet die App daraus automatisch.
+          </p>
+        )}
 
         {error && <Notice tone="warn">{error}</Notice>}
 
