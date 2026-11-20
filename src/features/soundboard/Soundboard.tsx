@@ -21,7 +21,6 @@ import { usePersistentState } from '../../lib/storage'
 import { cn, downloadFile, formatDuration, isTypingTarget, keyLabel } from '../../lib/util'
 import {
   RESERVED_KEYS,
-  TILE_COLORS,
   createSoundFromFile,
   exportSounds,
   isAudioFile,
@@ -353,9 +352,9 @@ export function Soundboard() {
         </EmptyState>
       ) : (
         <>
-          <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <ul className="grid grid-cols-3 gap-x-2 gap-y-6 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {visible.map((s) => (
-              <SoundTile
+              <SoundButton
                 key={s.id}
                 sound={s}
                 playing={playing[s.id]}
@@ -364,15 +363,16 @@ export function Soundboard() {
                 onEdit={() => setEditing(s)}
               />
             ))}
-            <li>
+            <li className="flex flex-col items-center">
               <button
                 type="button"
                 onClick={() => fileInput.current?.click()}
-                className="flex h-full min-h-[104px] w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-line text-[13px] text-muted transition-colors hover:border-muted hover:text-fg"
+                aria-label="Sound hinzufügen"
+                className="grid aspect-square w-full max-w-[112px] place-items-center rounded-full border-2 border-dashed border-line text-muted transition-colors hover:border-muted hover:text-fg"
               >
-                <Plus size={18} aria-hidden />
-                Hinzufügen
+                <Plus size={26} aria-hidden />
               </button>
+              <span className="mt-2.5 text-[13px] text-muted">Hinzufügen</span>
             </li>
           </ul>
           {visible.length === 0 && <p className="mt-4 text-sm text-muted">Keine Treffer für diese Auswahl.</p>}
@@ -516,7 +516,8 @@ export function Soundboard() {
   )
 }
 
-function SoundTile({
+/** Runder Drück-Button in der Akzentfarbe; Ring um den Button zeigt den Fortschritt. */
+function SoundButton({
   sound,
   playing,
   onPlay,
@@ -529,56 +530,90 @@ function SoundTile({
   onStop: () => void
   onEdit: () => void
 }) {
-  const bar = useRef<HTMLDivElement>(null)
+  const ring = useRef<SVGCircleElement>(null)
+  const [pressed, setPressed] = useState(false)
+  const R = 48
+  const C = 2 * Math.PI * R
 
+  // Fortschritt als Ring
   useEffect(() => {
     if (!playing) return
     let raf = 0
     const tick = () => {
       const p = Math.min(1, (audio.ctx.currentTime - playing.start) / playing.duration)
-      if (bar.current) bar.current.style.transform = `scaleX(${p})`
+      ring.current?.setAttribute('stroke-dashoffset', String(C * (1 - p)))
       if (p < 1) raf = requestAnimationFrame(tick)
     }
     tick()
     return () => cancelAnimationFrame(raf)
-  }, [playing])
+  }, [playing, C])
+
+  // Kurz „gedrückt“ anzeigen – auch wenn per Tastenkürzel ausgelöst
+  useEffect(() => {
+    if (!playing) return
+    setPressed(true)
+    const t = setTimeout(() => setPressed(false), 130)
+    return () => clearTimeout(t)
+  }, [playing?.start])
 
   return (
-    <li className="group relative">
-      <button
-        type="button"
-        onClick={onPlay}
-        className={cn(
-          'relative flex h-full min-h-[104px] w-full flex-col justify-between overflow-hidden rounded-lg border bg-surface p-3 text-left transition-colors',
-          playing ? 'border-fg/40 bg-raised' : 'border-line hover:border-muted/60 hover:bg-raised',
-        )}
-        aria-label={`${sound.name} abspielen`}
-      >
-        <span className="absolute inset-y-0 left-0 w-1" style={{ background: sound.color }} aria-hidden />
-        <span className="line-clamp-2 pr-6 font-medium leading-snug">{sound.name}</span>
-        <span className="mt-3 flex items-center justify-between gap-2 text-[12px] text-muted">
-          <span className="font-mono">{formatDuration(sound.duration)}</span>
-          {sound.key && <span className="kbd">{keyLabel(sound.key)}</span>}
-        </span>
-        {playing && (
-          <span className="absolute inset-x-0 bottom-0 h-0.5 bg-line" aria-hidden>
-            <span ref={bar} className="block h-full origin-left" style={{ background: sound.color, transform: 'scaleX(0)' }} />
-          </span>
-        )}
-      </button>
-      <div className="absolute right-1.5 top-1.5 flex gap-0.5">
-        {playing && (
-          <Button size="sm" variant="ghost" icon={Square} onClick={onStop} aria-label={`${sound.name} stoppen`} className="h-7 w-7 bg-surface" />
-        )}
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={MoreHorizontal}
-          onClick={onEdit}
-          aria-label={`${sound.name} bearbeiten`}
-          className="h-7 w-7 opacity-100 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
-        />
+    <li className="group relative flex flex-col items-center">
+      <div className="relative aspect-square w-full max-w-[112px]">
+        {/* Fortschrittsring */}
+        <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 -rotate-90" aria-hidden>
+          <circle cx="50" cy="50" r={R} fill="none" className="stroke-line" strokeWidth="2.5" />
+          {playing && (
+            <circle
+              ref={ring}
+              cx="50"
+              cy="50"
+              r={R}
+              fill="none"
+              className="stroke-fg"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeDasharray={C}
+              strokeDashoffset={C}
+            />
+          )}
+        </svg>
+        {/* Sockel + Button */}
+        <div className="absolute inset-[9%] rounded-full bg-raised shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]">
+          <button
+            type="button"
+            onClick={onPlay}
+            data-pressed={pressed || undefined}
+            aria-label={`${sound.name} abspielen`}
+            className="sound-btn absolute inset-[9%] rounded-full"
+          />
+        </div>
+        {/* Aktionen */}
+        <div className="absolute -right-1 -top-1 flex flex-col gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={MoreHorizontal}
+            onClick={onEdit}
+            aria-label={`${sound.name} bearbeiten`}
+            className="h-7 w-7 rounded-full border border-line bg-surface opacity-100 md:opacity-0 md:focus-visible:opacity-100 md:group-hover:opacity-100"
+          />
+          {playing && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Square}
+              onClick={onStop}
+              aria-label={`${sound.name} stoppen`}
+              className="h-7 w-7 rounded-full border border-line bg-surface"
+            />
+          )}
+        </div>
       </div>
+      <span className="mt-2.5 line-clamp-2 max-w-[140px] text-center text-[13px] font-medium leading-snug">{sound.name}</span>
+      <span className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
+        <span className="font-mono">{formatDuration(sound.duration)}</span>
+        {sound.key && <span className="kbd">{keyLabel(sound.key)}</span>}
+      </span>
     </li>
   )
 }
@@ -662,23 +697,6 @@ function EditSoundModal({
             ))}
           </datalist>
         </label>
-        <div>
-          <span className="label">Farbe</span>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Farbe">
-            {TILE_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                role="radio"
-                aria-checked={draft.color === c}
-                aria-label={c}
-                onClick={() => setDraft({ ...draft, color: c })}
-                className={cn('h-7 w-7 rounded-full ring-offset-2 ring-offset-surface', draft.color === c && 'ring-2 ring-fg')}
-                style={{ background: c }}
-              />
-            ))}
-          </div>
-        </div>
         <Slider
           label="Lautstärke"
           value={draft.volume}
