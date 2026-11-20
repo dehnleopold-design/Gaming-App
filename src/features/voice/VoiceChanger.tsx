@@ -233,6 +233,15 @@ export function VoiceChanger() {
         </div>
       )}
 
+      {running && outputIsDefault && (
+        <div className="mb-5">
+          <Notice tone="warn">
+            Die Stimme läuft gerade über dein normales Ausgabegerät – du hörst dich selbst. Kopfhörer aufsetzen, sonst gibt es
+            Rückkopplung. Für Discord am PC: virtuelles Kabel als Ausgang wählen (siehe Einrichtung).
+          </Notice>
+        </div>
+      )}
+
       {!running && (
         <div className="mb-5">
           <Notice>
@@ -383,9 +392,7 @@ export function VoiceChanger() {
                 label="Mithören"
                 description="Nur mit Kopfhörern – sonst Rückkopplung."
               />
-              {monitor && outputIsDefault && (
-                <Notice tone="warn">Ausgang ist dein Standardgerät – du hörst dich ohnehin. Für Discord das virtuelle Kabel als Ausgang wählen.</Notice>
-              )}
+
               {settings.shortcuts && (
                 <p className="text-[12px] leading-relaxed text-muted">
                   Tasten wirken nur, solange dieses Browserfenster den Fokus hat – nicht im Spiel.

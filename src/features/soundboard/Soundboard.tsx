@@ -4,6 +4,7 @@ import {
   ExternalLink,
   FileAudio,
   HelpCircle,
+  Link2,
   MoreHorizontal,
   Plus,
   Search,
@@ -44,6 +45,10 @@ export function Soundboard() {
   const [helpOpen, setHelpOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkText, setLinkText] = useState('')
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [linkErrors, setLinkErrors] = useState<string[]>([])
   const fileInput = useRef<HTMLInputElement>(null)
   const importInput = useRef<HTMLInputElement>(null)
   const { play, stop, stopAll, playing } = usePlayer(overlap)
@@ -71,7 +76,8 @@ export function Soundboard() {
           continue
         }
         try {
-          await audio.resume()
+          // resume() nicht abwarten: außerhalb eines Klicks (z. B. nach einem Download) bleibt es in Safari hängen
+          void audio.resume().catch(() => undefined)
           audio.soundBus.gain.value = volume
           const s = await createSoundFromFile(f, current)
           await soundDB.save(s)
@@ -85,6 +91,48 @@ export function Soundboard() {
     },
     [sounds, volume],
   )
+
+  /** Lädt Sounds über die Server-Funktion /api/sound (umgeht fehlende CORS-Header der Quellseiten). */
+  const addFromLinks = async () => {
+    const links = linkText
+      .split(/\s+/)
+      .map((l) => l.trim())
+      .filter((l) => /^https?:\/\//i.test(l))
+    if (links.length === 0) {
+      setLinkErrors(['Bitte einen Link einfügen, der mit http:// oder https:// beginnt.'])
+      return
+    }
+    void audio.resume().catch(() => undefined) // noch innerhalb des Klicks
+    setLinkBusy(true)
+    setLinkErrors([])
+    const files: File[] = []
+    const errs: string[] = []
+    for (const link of links.slice(0, 20)) {
+      try {
+        const r = await fetch(`/api/sound?url=${encodeURIComponent(link)}`)
+        const type = r.headers.get('content-type') ?? ''
+        if (!r.ok || !type.startsWith('audio/')) {
+          let msg = `Fehler ${r.status}`
+          if (type.includes('json')) msg = ((await r.json()) as { error?: string }).error ?? msg
+          else if (r.status === 404 || type.includes('html')) msg = 'Link-Import braucht die Server-Funktion (läuft auf Vercel bzw. mit npm run dev).'
+          errs.push(`${link}: ${msg}`)
+          continue
+        }
+        const name = decodeURIComponent(r.headers.get('x-sound-name') ?? '') || 'Sound'
+        const ext = type.includes('wav') ? 'wav' : type.includes('ogg') ? 'ogg' : type.includes('mp4') || type.includes('m4a') ? 'm4a' : 'mp3'
+        files.push(new File([await r.blob()], `${name}.${ext}`, { type: type.split(';')[0] }))
+      } catch {
+        errs.push(`${link}: Keine Verbindung.`)
+      }
+    }
+    if (files.length) await addFiles(files)
+    setLinkBusy(false)
+    setLinkErrors(errs)
+    if (errs.length === 0) {
+      setLinkText('')
+      setLinkOpen(false)
+    }
+  }
 
   const saveSound = async (s: Sound) => {
     // Eine Taste gehört immer nur einem Sound: beim alten Besitzer entfernen.
@@ -187,8 +235,11 @@ export function Soundboard() {
               Sounds finden auf Myinstants
               <ExternalLink size={15} aria-hidden />
             </a>
+            <Button icon={Link2} onClick={() => setLinkOpen(true)}>
+              Per Link
+            </Button>
             <Button variant="primary" icon={Plus} onClick={() => fileInput.current?.click()}>
-              Sounds hinzufügen
+              Datei hinzufügen
             </Button>
           </>
         }
@@ -289,13 +340,16 @@ export function Soundboard() {
               >
                 Myinstants öffnen <ExternalLink size={15} aria-hidden />
               </a>
+              <Button icon={Link2} onClick={() => setLinkOpen(true)}>
+                Link einfügen
+              </Button>
               <Button variant="primary" icon={Plus} onClick={() => fileInput.current?.click()}>
                 Datei wählen
               </Button>
             </div>
           }
         >
-          Sound auf Myinstants herunterladen → hier reinziehen. MP3, WAV, OGG und M4A bis 20&nbsp;MB.
+          Link einer Myinstants-Sound-Seite einfügen – oder eine Datei herunterladen und hier reinziehen. MP3, WAV, OGG und M4A bis 20&nbsp;MB.
         </EmptyState>
       ) : (
         <>
@@ -367,6 +421,46 @@ export function Soundboard() {
           setEditing(null)
         }}
       />
+
+      <Modal open={linkOpen} onClose={() => !linkBusy && setLinkOpen(false)} title="Sound per Link hinzufügen">
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void addFromLinks()
+          }}
+        >
+          <label className="block">
+            <span className="label">Link(s)</span>
+            <textarea
+              className="field min-h-[96px] resize-y font-mono text-[13px]"
+              placeholder={'https://www.myinstants.com/de/instant/…\nOder direkter Link auf eine .mp3'}
+              value={linkText}
+              onChange={(e) => setLinkText(e.target.value)}
+              autoFocus
+              disabled={linkBusy}
+            />
+          </label>
+          <ul className="space-y-1 text-[13px] text-muted">
+            <li>• Myinstants: Sound öffnen, Link der Seite kopieren und hier einfügen.</li>
+            <li>• Andere Seiten: direkter Link auf eine Audiodatei (.mp3, .wav, .ogg …).</li>
+            <li>• Mehrere Links: einer pro Zeile.</li>
+          </ul>
+          {linkErrors.map((e, i) => (
+            <Notice key={i} tone="warn">
+              <span className="break-all">{e}</span>
+            </Notice>
+          ))}
+          <div className="flex justify-end gap-2 border-t border-line pt-4">
+            <Button onClick={() => setLinkOpen(false)} disabled={linkBusy}>
+              Abbrechen
+            </Button>
+            <Button type="submit" variant="primary" icon={Link2} disabled={linkBusy || !linkText.trim()}>
+              {linkBusy ? 'Lädt …' : 'Hinzufügen'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title="So hören deine Freunde die Sounds in Discord" wide>
         <div className="space-y-5 text-sm leading-relaxed">

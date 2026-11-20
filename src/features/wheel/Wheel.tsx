@@ -474,25 +474,59 @@ function ListEditor({ entries, colors, onChange }: { entries: string[]; colors: 
   )
 }
 
+/** Erlaubt nur eine (optional negative) Ganzzahl während des Tippens: "", "-", "-12", "7". */
+const INT_DRAFT = /^-?\d{0,6}$/
+
+function NumberField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <span className="label">{label}</span>
+      <div className="flex gap-1.5">
+        {/* Typ "text" statt "number": iPad/iPhone-Zifferntastaturen haben oft kein Minus. */}
+        <input
+          type="text"
+          inputMode="text"
+          autoComplete="off"
+          className="field min-w-0 font-mono"
+          value={value}
+          aria-label={label}
+          onChange={(e) => {
+            const v = e.target.value.replace(/\s/g, '').replace(/[–−]/g, '-')
+            if (INT_DRAFT.test(v)) onChange(v)
+          }}
+        />
+        <Button
+          aria-label={`${label}: Vorzeichen wechseln`}
+          onClick={() => onChange(value.startsWith('-') ? value.slice(1) : '-' + value)}
+          className="w-10 font-mono"
+        >
+          ±
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function NumberGenerator({ onGenerate }: { onGenerate: (l: string[]) => void }) {
-  const [from, setFrom] = useState(1)
-  const [to, setTo] = useState(10)
-  const count = Math.abs(to - from) + 1
-  const valid = Number.isInteger(from) && Number.isInteger(to) && count >= 2 && count <= MAX_ENTRIES
+  const [fromText, setFromText] = useState('1')
+  const [toText, setToText] = useState('10')
+  const from = Number.parseInt(fromText, 10)
+  const to = Number.parseInt(toText, 10)
+  const complete = Number.isInteger(from) && Number.isInteger(to)
+  const count = complete ? Math.abs(to - from) + 1 : 0
+  const valid = complete && count >= 2 && count <= MAX_ENTRIES
   return (
     <div>
       <div className="grid grid-cols-2 gap-3">
-        <label>
-          <span className="label">Von</span>
-          <input type="number" className="field font-mono" value={from} onChange={(e) => setFrom(Math.trunc(Number(e.target.value)))} />
-        </label>
-        <label>
-          <span className="label">Bis</span>
-          <input type="number" className="field font-mono" value={to} onChange={(e) => setTo(Math.trunc(Number(e.target.value)))} />
-        </label>
+        <NumberField label="Von" value={fromText} onChange={setFromText} />
+        <NumberField label="Bis" value={toText} onChange={setToText} />
       </div>
       <p className="mt-2 text-[12px] text-muted">
-        {valid ? `${count} Felder` : `Bereich muss 2 bis ${MAX_ENTRIES} Zahlen umfassen.`}
+        {!complete
+          ? 'Bitte zwei ganze Zahlen eingeben (auch negativ, z. B. -5).'
+          : valid
+            ? `${count} Felder: ${from} bis ${to}`
+            : `Bereich muss 2 bis ${MAX_ENTRIES} Zahlen umfassen.`}
       </p>
       <Button
         className="mt-3 w-full"
